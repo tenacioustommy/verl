@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-7B-clip-0.35'
+exp_name='DAPO-Qwen2.5-7B-unbiased'
 
 adv_estimator=grpo
 
@@ -10,12 +10,12 @@ kl_coef=0.0
 kl_loss_coef=0.0
 
 clip_ratio_low=0.2
-clip_ratio_high=0.35
+clip_ratio_high=0.28
 lr=1e-6
 enable_overlong_buffer=True
-overlong_buffer_len=$((1024 * 4))
+overlong_buffer_len=$((1024 * 2))
 overlong_penalty_factor=1.0
-
+unbiased=True
 enable_filter_groups=True
 filter_groups_metric=acc
 max_num_gen_batches=10
@@ -25,11 +25,10 @@ n_resp_per_prompt=16
 train_prompt_mini_bsz=32
 
 use_token_level_loss=True
-
 # Ray
 # RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
 # WORKING_DIR=${WORKING_DIR:-"/mnt/bn/ttc-nnc-data/huangzihan"}
-NNODES=${NNODES:-2}
+NNODES=${NNODES:-8}
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/mnt/bn/ttc-nnc-data/huangzihan/verl"}
 RUNTIME_ENV=${RUNTIME_ENV:-"${RAY_DATA_HOME}/verl/trainer/runtime_env.yaml"}
@@ -41,7 +40,7 @@ TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 # Algorithm
 ## Train
 max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 10))
+max_response_length=$((1024 * 8))
 ## Validation
 val_top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 
@@ -72,6 +71,7 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
+    actor_rollout_ref.actor.unbiased=${unbiased} \
     algorithm.filter_groups.enable=${enable_filter_groups} \
     algorithm.filter_groups.max_num_gen_batches=${max_num_gen_batches} \
     algorithm.filter_groups.metric=${filter_groups_metric} \

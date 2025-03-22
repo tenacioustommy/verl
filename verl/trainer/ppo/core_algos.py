@@ -111,7 +111,8 @@ def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torc
 def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
                                    eos_mask: torch.Tensor,
                                    index: torch.Tensor,
-                                   epsilon: float = 1e-6):
+                                   epsilon: float = 1e-6,
+                                   unbiased: bool = False):
     """
     Compute advantage for GRPO, operating only on Outcome reward 
     (with only one scalar reward for each response).
@@ -148,7 +149,10 @@ def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
             else:
                 raise ValueError(f"no score in prompt index: {idx}")
         for i in range(bsz):
-            scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            if unbiased:
+                scores[i] = (scores[i] - id2mean[index[i]])
+            else:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
         scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
 
     return scores, scores
@@ -276,7 +280,8 @@ def compute_policy_loss(old_log_prob,
                         cliprange=None,
                         cliprange_low=None,
                         cliprange_high=None,
-                        use_token_level_loss=False):
+                        use_token_level_loss=False,
+                        unbiased=False):
     """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py#L1122
     Args:
         old_log_prob: `(torch.Tensor)`
@@ -316,8 +321,11 @@ def compute_policy_loss(old_log_prob,
     pg_losses2 = -advantages * torch.clamp(ratio, 1 - cliprange_low,
                                            1 + cliprange_high)  # - clip(ratio, 1-cliprange, 1+cliprange) * A
     pg_losses = torch.maximum(pg_losses1, pg_losses2)  # max(-ratio * A, -clip(ratio, 1-cliprange, 1+cliprange) * A)
-
-    if use_token_level_loss:
+    
+    if unbiased:
+        pg_loss = torch.sum(pg_losses * eos_mask, dim=1)
+        pg_loss = torch.mean(pg_loss)
+    elif use_token_level_loss:
         pg_loss = verl_F.masked_mean(pg_losses, eos_mask)
     else:
         pg_loss = torch.sum(pg_losses * eos_mask, dim=1) / seq_len_per_sample
