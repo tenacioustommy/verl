@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-32B'
+exp_name='DAPO-Qwen2.5-7B'
 
 adv_estimator=grpo
 
@@ -11,7 +11,7 @@ kl_loss_coef=0.0
 
 clip_ratio_low=0.2
 clip_ratio_high=0.28
-
+lr=1e-6
 enable_overlong_buffer=True
 overlong_buffer_len=$((1024 * 4))
 overlong_penalty_factor=1.0
@@ -27,13 +27,13 @@ train_prompt_mini_bsz=32
 use_token_level_loss=True
 
 # Ray
-RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
-WORKING_DIR=${WORKING_DIR:-"${PWD}"}
-RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
-NNODES=${NNODES:-16}
+# RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
+# WORKING_DIR=${WORKING_DIR:-"/mnt/bn/ttc-nnc-data/huangzihan"}
+NNODES=${NNODES:-2}
 # Paths
-RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
-MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-32B"}
+RAY_DATA_HOME=${RAY_DATA_HOME:-"/mnt/bn/ttc-nnc-data/huangzihan/verl"}
+RUNTIME_ENV=${RUNTIME_ENV:-"${RAY_DATA_HOME}/verl/trainer/runtime_env.yaml"}
+MODEL_PATH=${MODEL_PATH:-"/mnt/bn/yangmin-priv/wuheng/project/r1-v/ckpt/Qwen2.5-VL-7B-Instruct"}
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
@@ -41,18 +41,19 @@ TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 # Algorithm
 ## Train
 max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 20))
+max_response_length=$((1024 * 10))
 ## Validation
 val_top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 
-
+VLLM_ATTENTION_BACKEND="XFORMERS"
 # Performance Related Parameter
-sp_size=8
+sp_size=1
 use_dynamic_bsz=True
 actor_ppo_max_token_len=$((max_prompt_length + max_response_length))
 infer_ppo_max_token_len=$((max_prompt_length + max_response_length))
+
 offload=True
-gen_tp=4
+gen_tp=1
 
 ray job submit --no-wait \
     --working-dir . \
@@ -86,7 +87,7 @@ ray job submit --no-wait \
     +actor_rollout_ref.model.override_config.embd_pdrop=0. \
     +actor_rollout_ref.model.override_config.resid_pdrop=0. \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
+    actor_rollout_ref.actor.optim.lr="${lr}" \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
     actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
@@ -118,7 +119,7 @@ ray job submit --no-wait \
     trainer.nnodes="${NNODES}" \
     +trainer.val_before_train=True \
     trainer.test_freq=5 \
-    trainer.save_freq=5 \
+    trainer.save_freq=20 \
     trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
-    trainer.resume_mode=auto
+    trainer.resume_mode=auto \
