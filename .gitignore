@@ -8,7 +8,7 @@ data/
 **/*.tar.gz
 **/playground
 **/wandb
-
+/ckpts
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

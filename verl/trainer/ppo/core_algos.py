@@ -323,7 +323,7 @@ def compute_policy_loss(old_log_prob,
     pg_losses = torch.maximum(pg_losses1, pg_losses2)  # max(-ratio * A, -clip(ratio, 1-cliprange, 1+cliprange) * A)
     
     if unbiased:
-        pg_loss = torch.sum(pg_losses * eos_mask, dim=1)
+        pg_loss = torch.sum(pg_losses * eos_mask, dim=1) / 8192
         pg_loss = torch.mean(pg_loss)
     elif use_token_level_loss:
         pg_loss = verl_F.masked_mean(pg_losses, eos_mask)

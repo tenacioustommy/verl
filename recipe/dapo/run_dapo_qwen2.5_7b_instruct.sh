@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-7B-unbiased'
+exp_name='DAPO-Qwen2.5-7B-instruct'
 
 adv_estimator=grpo
 
@@ -12,10 +12,10 @@ kl_loss_coef=0.0
 clip_ratio_low=0.2
 clip_ratio_high=0.28
 lr=1e-6
-enable_overlong_buffer=False
-overlong_buffer_len=$((1024 * 2))
+enable_overlong_buffer=True
+overlong_buffer_len=$((1024 * 4))
 overlong_penalty_factor=1.0
-unbiased=True
+
 enable_filter_groups=True
 filter_groups_metric=acc
 max_num_gen_batches=10
@@ -25,14 +25,15 @@ n_resp_per_prompt=16
 train_prompt_mini_bsz=32
 
 use_token_level_loss=True
+
 # Ray
 # RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
 # WORKING_DIR=${WORKING_DIR:-"/mnt/bn/ttc-nnc-data/huangzihan"}
-NNODES=${NNODES:-8}
+NNODES=${NNODES:-1}
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/mnt/bn/ttc-nnc-data/huangzihan/verl"}
 RUNTIME_ENV=${RUNTIME_ENV:-"${RAY_DATA_HOME}/verl/trainer/runtime_env.yaml"}
-MODEL_PATH=${MODEL_PATH:-"/mnt/bn/yangmin-priv/wuheng/project/r1-v/ckpt/Qwen2.5-VL-7B-Instruct"}
+MODEL_PATH=${MODEL_PATH:-"/mnt/bn/yangmin-priv/wuheng/project/r1-v/ckpt/Qwen2.5-7B-Instruct"}
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
@@ -40,7 +41,7 @@ TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 # Algorithm
 ## Train
 max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 8))
+max_response_length=$((1024 * 10))
 ## Validation
 val_top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 
@@ -71,7 +72,6 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
-    actor_rollout_ref.actor.unbiased=${unbiased} \
     algorithm.filter_groups.enable=${enable_filter_groups} \
     algorithm.filter_groups.max_num_gen_batches=${max_num_gen_batches} \
     algorithm.filter_groups.metric=${filter_groups_metric} \
@@ -97,7 +97,7 @@ ray job submit --no-wait \
     actor_rollout_ref.actor.grad_clip=1.0 \
     actor_rollout_ref.actor.use_token_level_loss=${use_token_level_loss} \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.70 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.80 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
@@ -109,6 +109,9 @@ ray job submit --no-wait \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=-1 \
+    custom_reward_function.overlong_buffer.enable=${enable_overlong_buffer} \
+    custom_reward_function.overlong_buffer.len=${overlong_buffer_len} \
+    custom_reward_function.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
@@ -119,9 +122,4 @@ ray job submit --no-wait \
     trainer.save_freq=20 \
     trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
-    trainer.resume_mode=auto 
-
-    
-# custom_reward_function.overlong_buffer.enable=${enable_overlong_buffer} \
-# custom_reward_function.overlong_buffer.len=${overlong_buffer_len} \
-# custom_reward_function.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
+    trainer.resume_mode=auto \
